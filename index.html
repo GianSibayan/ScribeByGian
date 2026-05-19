@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Scribe</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Nunito:wght@300;400;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #0d1b2a;
+  --bg2:     #112236;
+  --bg3:     #162d45;
+  --grid:    rgba(100,140,180,0.07);
+  --grid2:   rgba(100,140,180,0.03);
+  --surface: #fdfaf4;
+  --surf2:   #f8f2e8;
+  --surf3:   #f2ead8;
+  --cream:   #fdfaf4;
+  --brown:   #6b4f35;
+  --brown2:  #8b6448;
+  --brown3:  #a87c5a;
+  --navy:    #1b2d45;
+  --text:    #2c2016;
+  --text2:   #5a4232;
+  --text3:   #9a8070;
+  --border:  rgba(107,79,53,0.18);
+  --border2: rgba(107,79,53,0.10);
+  --shadow:  0 2px 20px rgba(13,27,42,0.35);
+  --r:       10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
+body{
+  background:var(--bg);color:var(--cream);
+  font-family:'Nunito',sans-serif;font-weight:300;
+  min-height:100vh;overflow-x:hidden;
+  padding-bottom:72px;position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px),
+    linear-gradient(var(--grid2) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid2) 1px,transparent 1px);
+  background-size:36px 36px,36px 36px,9px 9px,9px 9px;
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;left:68px;top:0;bottom:0;width:1px;
+  background:rgba(180,60,60,0.12);pointer-events:none;z-index:0;
+}
+.wrap{position:relative;z-index:1;max-width:700px;margin:0 auto;padding:0 14px 32px;}
+
+/* HEADER */
+header{padding:24px 0 16px;}
+.hcard{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);padding:16px 16px 12px;box-shadow:var(--shadow);
+}
+.logo-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+.lslot{display:flex;align-items:center;gap:7px;flex:1;}
+.lslot.r{flex-direction:row-reverse;}
+.lslot img{height:40px;width:auto;object-fit:contain;flex-shrink:0;}
+.lph{
+  height:40px;width:40px;flex-shrink:0;
+  border:1px dashed var(--border);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Mono',monospace;font-size:7.5px;
+  color:var(--text3);text-align:center;line-height:1.35;
+}
+.ltxt{font-family:'DM Mono',monospace;font-size:8.5px;color:var(--text3);line-height:1.4;}
+.ltxt.r{text-align:right;}
+.bc{text-align:center;flex-shrink:0;}
+.bn{font-family:'Space Grotesk',sans-serif;font-size:2.2rem;font-weight:800;color:var(--navy);letter-spacing:-.04em;line-height:1;}
+.bn em{color:var(--brown);font-style:normal;}
+.bs{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);margin-top:2px;}
+.hmeta{
+  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:3px;
+  font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);
+  border-top:1px solid var(--border2);padding-top:8px;
+}
+.hmeta a{color:var(--brown2);text-decoration:none;}
+.hmeta a:hover{color:var(--brown);}
+.dot{color:var(--border);}
+
+/* SECTION LABEL */
+.slabel{
+  font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(200,185,165,0.5);margin:18px 0 8px;
+  display:flex;align-items:center;gap:8px;
+}
+.slabel::before,.slabel::after{content:'';flex:1;height:1px;background:rgba(200,185,165,0.10);}
+
+/* CARD */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;margin-bottom:10px;box-shadow:var(--shadow);
+}
+
+/* CHAPTER ROW */
+.ch-row{
+  background:var(--surf2);border:1px solid var(--border2);
+  border-radius:8px;padding:13px;margin-bottom:10px;
+  animation:fup .2s ease;
+}
+@keyframes fup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.ch-top{display:flex;align-items:center;gap:7px;margin-bottom:10px;}
+.ch-badge{
+  font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--brown2);background:rgba(107,79,53,.09);
+  border:1px solid var(--border);border-radius:4px;padding:2px 8px;flex-shrink:0;
+}
+.btn-rm{
+  margin-left:auto;background:none;border:1px solid rgba(160,50,50,.2);
+  color:rgba(160,50,50,.5);border-radius:4px;width:26px;height:26px;
+  cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;
+}
+.btn-rm:hover{border-color:#c0392b;color:#c0392b;background:rgba(160,50,50,.06);}
+.ch-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px;}
+
+/* TWO UPLOAD ZONES SIDE BY SIDE */
+.upload-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;}
+.upload-block{display:flex;flex-direction:column;gap:5px;}
+.upload-label{
+  font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text3);margin-bottom:2px;display:flex;align-items:center;gap:5px;
+}
+.upload-label .tag{
+  background:rgba(107,79,53,.08);border:1px solid var(--border2);
+  border-radius:3px;padding:1px 5px;font-size:8px;color:var(--brown2);
+}
+.upload-label .tag.ak{background:rgba(27,45,69,.08);color:var(--navy);}
+
+/* DROP ZONE */
+.dz{
+  border:1.5px dashed var(--border);border-radius:7px;
+  padding:11px 8px;text-align:center;cursor:pointer;
+  transition:all .2s;background:var(--surf3);
+  position:relative;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-height:70px;
+}
+.dz:hover,.dz.over{border-color:var(--brown2);background:rgba(107,79,53,.04);}
+.dz.ak-zone{border-color:rgba(27,45,69,0.25);background:rgba(27,45,69,.04);}
+.dz.ak-zone:hover,.dz.ak-zone.over{border-color:var(--navy);background:rgba(27,45,69,.07);}
+.dz input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.dz-ico{font-size:16px;margin-bottom:2px;pointer-events:none;}
+.dz-txt{font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);pointer-events:none;line-height:1.5;}
+.dz-txt strong{color:var(--brown2);display:block;font-size:9.5px;}
+.dz.ak-zone .dz-txt strong{color:var(--navy);}
+.thumb-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+.thumb-row img{height:40px;width:40px;object-fit:cover;border-radius:3px;border:1px solid var(--border);}
+.tcnt{font-family:'DM Mono',monospace;font-size:8.5px;color:var(--brown2);margin-top:3px;}
+.tcnt.ak{color:var(--navy);}
+
+/* FORM ELEMENTS */
+label.lbl{display:block;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;}
+input[type=text],input[type=number],select,textarea{
+  width:100%;background:var(--surf3);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);
+  font-family:'Nunito',sans-serif;font-size:14px;font-weight:300;
+  padding:9px 11px;outline:none;transition:border-color .2s,box-shadow .2s;
+  -webkit-appearance:none;appearance:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--brown2);box-shadow:0 0 0 3px rgba(107,79,53,.07);}
+input::placeholder,textarea::placeholder{color:var(--text3);}
+
+/* BUTTONS */
+.btn{
+  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  border-radius:7px;padding:11px 16px;cursor:pointer;transition:all .18s;
+  border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+.btn-primary{background:var(--navy);color:var(--cream);border-color:var(--navy);font-weight:500;width:100%;padding:13px;font-size:12px;}
+.btn-primary:hover{background:#243a56;}
+.btn-primary:active{transform:scale(.98);}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-outline{background:transparent;border-color:var(--border);color:var(--text2);}
+.btn-outline:hover{border-color:var(--brown2);color:var(--brown);}
+.btn-brown{background:var(--brown);color:var(--cream);border-color:var(--brown);flex:1;}
+.btn-brown:hover{background:var(--brown2);}
+.btn-ghost{background:rgba(107,79,53,.07);border-color:var(--border);color:var(--brown2);width:100%;margin-top:4px;}
+.btn-ghost:hover{background:rgba(107,79,53,.13);}
+.btn-sm{padding:7px 11px;font-size:10px;}
+
+/* OPTIONS */
+.opts-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+.rgroup{display:flex;flex-direction:column;gap:5px;}
+.ropt{
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  font-size:13px;color:var(--text2);padding:8px 10px;
+  border-radius:6px;border:1px solid transparent;transition:all .15s;touch-action:manipulation;
+}
+.ropt:hover{border-color:var(--border);background:var(--surf3);}
+.ropt input[type=radio]{accent-color:var(--brown);width:15px;height:15px;flex-shrink:0;}
+.ropt.sel{border-color:var(--border);background:rgba(107,79,53,.07);color:var(--brown);}
+
+/* PROGRESS */
+#prog-area{display:none;margin-bottom:10px;}
+.prog-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);}
+.prog-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.prog-lbl{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);}
+.prog-pct{font-family:'DM Mono',monospace;font-size:11px;color:var(--brown2);font-weight:500;}
+.bar-track{height:4px;background:rgba(107,79,53,.1);border-radius:4px;overflow:hidden;margin-bottom:10px;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--brown),var(--brown3));border-radius:4px;transition:width .35s ease;width:0%;}
+.plog{display:flex;flex-direction:column;gap:4px;max-height:110px;overflow-y:auto;}
+.pline{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);display:flex;gap:6px;}
+.pline.active{color:var(--text2);}
+.pline.done{color:var(--brown2);}
+
+/* OUTPUT */
+#out-area{display:none;}
+.out-card{background:var(--surface);border:1px solid var(--brown2);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);}
+.out-h{font-family:'Cormorant Garamond',serif;font-size:1.2rem;font-weight:400;color:var(--navy);margin-bottom:2px;}
+.out-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:12px;}
+.out-prev{
+  background:var(--surf3);border:1px solid var(--border2);border-radius:6px;
+  padding:13px;font-size:12px;color:var(--text2);line-height:1.75;
+  max-height:260px;overflow-y:auto;white-space:pre-wrap;
+  font-family:'Nunito',sans-serif;margin-bottom:13px;
+}
+.dl-row{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* FOOTER */
+footer{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(13,27,42,0.97);border-top:1px solid rgba(200,185,165,0.1);
+  padding:9px 18px;display:flex;align-items:center;justify-content:space-between;
+  z-index:10;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.f-brand{font-family:'Cormorant Garamond',serif;font-size:1.05rem;font-weight:300;color:var(--cream);}
+.f-brand em{color:var(--brown3);font-style:normal;}
+.f-by{font-family:'DM Mono',monospace;font-size:9px;color:rgba(200,185,165,0.4);text-align:right;line-height:1.6;}
+.f-by a{color:rgba(200,185,165,0.55);text-decoration:none;}
+.f-by a:hover{color:var(--brown3);}
+
+.spin{width:13px;height:13px;border:2px solid rgba(253,250,244,.2);border-top-color:var(--cream);border-radius:50%;animation:rot .7s linear infinite;display:inline-block;}
+@keyframes rot{to{transform:rotate(360deg)}}
+#toast{
+  position:fixed;bottom:62px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:var(--navy);color:var(--cream);border:1px solid rgba(200,185,165,0.15);
+  border-radius:6px;padding:8px 16px;font-family:'DM Mono',monospace;font-size:10px;
+  z-index:200;opacity:0;transition:all .22s;pointer-events:none;white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(107,79,53,.2);border-radius:4px;}
+
+@media(max-width:500px){
+  .ch-fields{grid-template-columns:1fr;}
+  .opts-grid{grid-template-columns:1fr;}
+  .upload-pair{grid-template-columns:1fr;}
+  .bn{font-size:2rem;}
+  .ltxt{display:none;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="hcard">
+      <div class="logo-row">
+        <!-- LEFT: Mapua University -->
+        <div class="lslot">
+          <!-- TO ADD LOGO: delete logo-ph div, uncomment img, paste base64 -->
+          <!-- <img src="data:image/png;base64,YOUR_MAPUA_BASE64" alt="Mapuá University"/> -->
+          <div class="lph">Mapuá<br>Univ.</div>
+          <div class="ltxt">Mapuá<br>University</div>
+        </div>
+
+        <div class="bc">
+          <div class="bn">Scribe<em>.</em></div>
+          <div class="bs">OCR · Test Generator</div>
+        </div>
+
+        <!-- RIGHT: School of Nursing -->
+        <div class="lslot r">
+          <!-- <img src="data:image/png;base64,YOUR_NURSING_BASE64" alt="School of Nursing"/> -->
+          <div class="lph">School<br>Nursing</div>
+          <div class="ltxt r">School of<br>Nursing</div>
+        </div>
+      </div>
+      <div class="hmeta">
+        <span>by Gian</span><span class="dot">·</span>
+        <a href="mailto:gian.e.sibayan@gmail.com">gian.e.sibayan@gmail.com</a>
+        <span class="dot">·</span>
+        <a href="https://instagram.com/euginini06_" target="_blank">@euginini06_</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="slabel">Chapters &amp; Images</div>
+  <div class="card">
+    <div id="ch-list"></div>
+    <button class="btn btn-ghost" onclick="addCh()">+ Add Chapter</button>
+  </div>
+
+  <div class="slabel">Output Options</div>
+  <div class="card">
+    <div class="opts-grid">
+      <div>
+        <label class="lbl">Answer Key Placement</label>
+        <div class="rgroup">
+          <label class="ropt sel" id="opt-same">
+            <input type="radio" name="ak" value="same" checked onchange="rsty()"/>
+            After questions, same file
+          </label>
+          <label class="ropt" id="opt-separate">
+            <input type="radio" name="ak" value="separate" onchange="rsty()"/>
+            Separate file
+          </label>
+          <label class="ropt" id="opt-none">
+            <input type="radio" name="ak" value="none" onchange="rsty()"/>
+            No answer key
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px;">
+        <div>
+          <label class="lbl">Exam Title</label>
+          <input type="text" id="etitle" placeholder="e.g. Board Review Exam 1"/>
+        </div>
+        <div>
+          <label class="lbl">Instructions (optional)</label>
+          <textarea id="einst" rows="3" placeholder="Choose the best answer for each item." style="resize:none;"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="slabel">Generate</div>
+  <div class="card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button class="btn btn-primary" id="gbtn" onclick="gen()">✦ Generate Test Paper</button>
+    <button class="btn btn-outline btn-sm" onclick="resetAll()" style="width:auto;">Reset</button>
+  </div>
+
+  <div id="prog-area">
+    <div class="prog-card">
+      <div class="prog-top">
+        <span class="prog-lbl" id="plbl">Initializing…</span>
+        <span class="prog-pct" id="ppct">0%</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="pbar"></div></div>
+      <div class="plog" id="plog"></div>
+    </div>
+  </div>
+
+  <div id="out-area">
+    <div class="slabel">Download</div>
+    <div class="out-card">
+      <div class="out-h" id="outh">Test Paper Ready</div>
+      <div class="out-meta" id="outm"></div>
+      <div class="out-prev" id="outp"></div>
+      <div class="dl-row">
+        <button class="btn btn-brown" onclick="dlDocx()">↓ DOCX</button>
+        <button class="btn btn-outline" onclick="dlPdf()" style="flex:1;">↓ PDF</button>
+        <button class="btn btn-outline btn-sm" id="dlkey" onclick="dlKeyDocx()" style="display:none;width:100%;">↓ Answer Key — separate DOCX</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div class="f-brand">Scribe<em>.</em></div>
+  <div class="f-by">
+    by Gian &nbsp;·&nbsp;
+    <a href="mailto:gian.e.sibayan@gmail.com">gian.e.sibayan@gmail.com</a><br>
+    <a href="https://instagram.com/euginini06_" target="_blank">@euginini06_</a>
+  </div>
+</footer>
+<div id="toast"></div>
+
+<script>
+const GKEY = "AIzaSyARzXD2_aZdgtnJv0yWrq735-Xwgr72zfE";
+const GURL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GKEY}`;
+
+let chs = [], ctr = 0, result = null;
+
+// ── CHAPTER MANAGEMENT ──────────────────────────────
+function addCh() {
+  ctr++;
+  chs.push({ id: ctr, name: '', qFiles: [], akFiles: [], count: 10 });
+  renderChs();
+}
+function removeCh(id) { chs = chs.filter(c => c.id !== id); renderChs(); }
+function setF(id, f, v) { const c = chs.find(c => c.id === id); if (c) c[f] = v; }
+
+function handleFiles(id, field, fl) {
+  const c = chs.find(c => c.id === id);
+  if (!c) return;
+  c[field] = Array.from(fl);
+  renderThumbs(id, field, c[field]);
+}
+
+function renderThumbs(id, field, files) {
+  const isAK = field === 'akFiles';
+  const row = document.getElementById(`tr-${id}-${field}`);
+  const cnt = document.getElementById(`tc-${id}-${field}`);
+  if (!row) return;
+  row.innerHTML = '';
+  files.forEach(f => {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    row.appendChild(img);
+  });
+  if (cnt) cnt.textContent = files.length
+    ? `${files.length} image${files.length > 1 ? 's' : ''} selected`
+    : '';
+}
+
+function renderChs() {
+  const list = document.getElementById('ch-list');
+  list.innerHTML = '';
+  if (!chs.length) {
+    list.innerHTML = `<div style="text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);padding:8px 0 4px;">No chapters yet — tap + Add Chapter</div>`;
+    return;
+  }
+  chs.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'ch-row';
+    d.innerHTML = `
+      <div class="ch-top">
+        <span class="ch-badge">Chapter ${i + 1}</span>
+        <button class="btn-rm" onclick="removeCh(${c.id})">×</button>
+      </div>
+      <div class="ch-fields">
+        <div>
+          <label class="lbl">Chapter / Topic Name</label>
+          <input type="text" placeholder="e.g. Cardiovascular System" value="${esc(c.name)}"
+            oninput="setF(${c.id},'name',this.value)"/>
+        </div>
+        <div>
+          <label class="lbl">Items to Include</label>
+          <input type="number" min="1" max="200" value="${c.count}"
+            oninput="setF(${c.id},'count',parseInt(this.value)||10)"/>
+        </div>
+      </div>
+      <div class="upload-pair">
+        <div class="upload-block">
+          <div class="upload-label">
+            <span class="tag">Questions</span>
+            Scan pages
+          </div>
+          <div class="dz" id="dz-${c.id}-qFiles"
+            ondragover="dzo(event,${c.id},'qFiles')" ondragleave="dzl(event,${c.id},'qFiles')" ondrop="dzd(event,${c.id},'qFiles')">
+            <input type="file" multiple accept="image/*" capture="environment" onchange="handleFiles(${c.id},'qFiles',this.files)"/>
+            <div class="dz-ico">📄</div>
+            <div class="dz-txt"><strong>Question images</strong>Camera, gallery, or drag</div>
+          </div>
+          <div class="thumb-row" id="tr-${c.id}-qFiles"></div>
+          <div class="tcnt" id="tc-${c.id}-qFiles"></div>
+        </div>
+        <div class="upload-block">
+          <div class="upload-label">
+            <span class="tag ak">Answer Key</span>
+            Scan pages
+          </div>
+          <div class="dz ak-zone" id="dz-${c.id}-akFiles"
+            ondragover="dzo(event,${c.id},'akFiles')" ondragleave="dzl(event,${c.id},'akFiles')" ondrop="dzd(event,${c.id},'akFiles')">
+            <input type="file" multiple accept="image/*" capture="environment" onchange="handleFiles(${c.id},'akFiles',this.files)"/>
+            <div class="dz-ico">🔑</div>
+            <div class="dz-txt"><strong>Answer key images</strong>Camera, gallery, or drag</div>
+          </div>
+          <div class="thumb-row" id="tr-${c.id}-akFiles"></div>
+          <div class="tcnt ak" id="tc-${c.id}-akFiles"></div>
+        </div>
+      </div>`;
+    list.appendChild(d);
+  });
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function dzo(e,id,f){e.preventDefault();document.getElementById(`dz-${id}-${f}`)?.classList.add('over');}
+function dzl(e,id,f){document.getElementById(`dz-${id}-${f}`)?.classList.remove('over');}
+function dzd(e,id,f){e.preventDefault();document.getElementById(`dz-${id}-${f}`)?.classList.remove('over');handleFiles(id,f,e.dataTransfer.files);}
+function rsty(){['same','separate','none'].forEach(v=>{const el=document.getElementById(`opt-${v}`);el?.classList.toggle('sel',!!el.querySelector('input')?.checked);});}
+
+// ── PROGRESS ────────────────────────────────────────
+let total = 1, done = 0;
+function showProg() {
+  document.getElementById('prog-area').style.display = 'block';
+  document.getElementById('out-area').style.display = 'none';
+  document.getElementById('plog').innerHTML = '';
+  done = 0; setP(0, 'Starting…');
+}
+function setP(pct, lbl) {
+  document.getElementById('pbar').style.width = pct + '%';
+  document.getElementById('plbl').textContent = lbl;
+  document.getElementById('ppct').textContent = Math.round(pct) + '%';
+}
+function log(txt, st = 'active') {
+  const el = document.createElement('div');
+  el.className = `pline ${st}`;
+  el.innerHTML = `<span>${st === 'done' ? '✓' : '›'}</span><span>${txt}</span>`;
+  el.id = 'l' + Date.now() + Math.random().toString(36).slice(2);
+  document.getElementById('plog').appendChild(el);
+  el.scrollIntoView({ block: 'nearest' });
+  return el.id;
+}
+function doneLog(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'pline done'; el.children[0].textContent = '✓';
+  done++; setP((done / total) * 100, `${done} of ${total} steps`);
+}
+
+// ── OCR ─────────────────────────────────────────────
+async function ocr(file) {
+  const { data: { text } } = await Tesseract.recognize(file, 'eng', { logger: () => {} });
+  return text;
+}
+
+// ── GEMINI ──────────────────────────────────────────
+async function callGemini(prompt) {
+  const r = await fetch(GURL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.15, maxOutputTokens: 8192 }
+    })
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e?.error?.message || 'Gemini error'); }
+  const d = await r.json();
+  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// ── MAIN GENERATE ───────────────────────────────────
+async function gen() {
+  if (!chs.length) { toast('Add at least one chapter.'); return; }
+  for (const c of chs) {
+    if (!c.name.trim()) { toast('Please name all chapters.'); return; }
+    if (!c.qFiles.length) { toast(`"${c.name}" has no question images.`); return; }
+  }
+  const ak = document.querySelector('input[name=ak]:checked').value;
+  const btn = document.getElementById('gbtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Working…';
+
+  // Steps: per chapter: OCR questions, format questions, OCR answer key (if files), format answer key
+  // Plus 2 for assemble + done
+  const hasAK = ak !== 'none';
+  total = chs.length * (hasAK ? 4 : 2) + 2;
+  showProg();
+
+  try {
+    const res = [];
+    for (const c of chs) {
+      // OCR questions
+      const s1 = log(`OCR questions: ${c.name}`);
+      let qRaw = '';
+      for (const f of c.qFiles) qRaw += '\n' + await ocr(f);
+      doneLog(s1);
+
+      // Format questions
+      const s2 = log(`Formatting questions: ${c.name}`);
+      const qOut = await callGemini(qPrompt(c.name, c.count, qRaw));
+      const qText = parseSection(qOut, 'QUESTIONS');
+      doneLog(s2);
+
+      let akText = '';
+      if (hasAK) {
+        if (c.akFiles.length) {
+          // OCR answer key
+          const s3 = log(`OCR answer key: ${c.name}`);
+          let akRaw = '';
+          for (const f of c.akFiles) akRaw += '\n' + await ocr(f);
+          doneLog(s3);
+
+          // Format answer key
+          const s4 = log(`Formatting answer key: ${c.name}`);
+          const akOut = await callGemini(akPrompt(c.name, c.count, akRaw));
+          akText = parseSection(akOut, 'ANSWERS');
+          doneLog(s4);
+        } else {
+          // Skip AK steps but still tick progress
+          log(`No answer key images for: ${c.name} — skipping`, 'done');
+          done += 2; setP((done / total) * 100, `${done} of ${total} steps`);
+        }
+      }
+
+      res.push({ name: c.name, qText, akText, count: c.count });
+    }
+
+    const s5 = log('Assembling document');
+    result = assemble(res, ak);
+    doneLog(s5);
+    log('Complete!', 'done'); done++; setP(100, 'Done!');
+    showOut(ak);
+  } catch (err) {
+    log(`Error: ${err.message}`, 'active');
+    toast('Something went wrong. Check console.');
+    console.error(err);
+  }
+
+  btn.disabled = false; btn.innerHTML = '✦ Generate Test Paper';
+}
+
+// ── PROMPTS ─────────────────────────────────────────
+function qPrompt(name, count, raw) {
+  return `You are a nursing exam formatter. Extract and reformat exactly ${count} multiple choice questions from chapter "${name}" from the raw OCR text below.
+
+RULES:
+1. Extract exactly ${count} questions (use all if fewer exist).
+2. Convert option formats like (1)(2)(3)(4) or 1. 2. 3. 4. → A. B. C. D.
+3. Keep situation/instruction blocks like "(For items 1-5):" or "Situation:" above their questions. Label them SITUATION: or FOR_ITEMS:.
+4. Fix obvious OCR errors but preserve medical terminology.
+5. Number questions starting from 1.
+6. Do NOT include any answers.
+
+WRAP output in QUESTIONS_START and QUESTIONS_END tags.
+
+FORMAT:
+QUESTIONS_START
+[SITUATION: text if applicable]
+1. Question text
+A. option
+B. option
+C. option
+D. option
+
+2. Next question...
+QUESTIONS_END
+
+RAW OCR TEXT:
+${raw}`;
+}
+
+function akPrompt(name, count, raw) {
+  return `You are a nursing exam answer key formatter. The raw OCR text below is from the answer key section of a nursing textbook for chapter "${name}". It contains numbered answers like "1. The answer is (2). Because..." or "1. (1) explanation...".
+
+RULES:
+1. Extract answers for items 1 through ${count}.
+2. Convert answer options: (1)→A, (2)→B, (3)→C, (4)→D. Also convert 1.→A, 2.→B, 3.→C, 4.→D if used.
+3. Keep the full explanation text after the letter.
+4. Fix obvious OCR errors but preserve medical terminology.
+5. Number answers starting from 1.
+
+WRAP output in ANSWERS_START and ANSWERS_END tags.
+
+FORMAT — use EXACTLY this per item:
+ANSWERS_START
+1. A — Explanation text here.
+2. C — Explanation text here.
+3. B — Explanation text here.
+ANSWERS_END
+
+RAW OCR TEXT:
+${raw}`;
+}
+
+// ── PARSE SECTIONS ──────────────────────────────────
+function parseSection(text, tag) {
+  const m = text.match(new RegExp(`${tag}S?_START([\\s\\S]*?)${tag}S?_END`));
+  return m ? m[1].trim() : text.trim();
+}
+
+// ── ASSEMBLE ────────────────────────────────────────
+function assemble(chRes, ak) {
+  let gn = 0;
+  const qBlocks = [];   // question blocks
+  const akBlocks = [];  // answer key blocks per chapter
+
+  chRes.forEach(ch => {
+    qBlocks.push({ t: 'ch', text: ch.name });
+    const lines = ch.qText.split('\n');
+    let ln = 0, inQ = false, sitBuf = [];
+
+    const flushSit = () => {
+      const t = sitBuf.join('\n').trim();
+      if (t) qBlocks.push({ t: 'sit', text: t });
+      sitBuf = [];
+    };
+
+    lines.forEach(line => {
+      const qM = line.match(/^(\d+)\.\s+([\s\S]+)/);
+      const oM = line.match(/^([A-Da-d])\.\s+([\s\S]+)/);
+      const sM = line.match(/^(SITUATION:|FOR_ITEMS?:|FOR\s+\d+)/i);
+      if (sM || (!qM && !oM && line.trim() && !inQ)) {
+        if (inQ) { inQ = false; sitBuf = []; }
+        sitBuf.push(line);
+      } else if (qM) {
+        if (!inQ && sitBuf.length) flushSit();
+        ln++; gn++; inQ = true;
+        qBlocks.push({ t: 'q', g: gn, text: `${gn}. ${qM[2]}`, opts: [] });
+        sitBuf = [];
+      } else if (oM && inQ) {
+        const last = [...qBlocks].reverse().find(b => b.t === 'q');
+        if (last) last.opts.push(`${oM[1].toUpperCase()}. ${oM[2]}`);
+      } else if (!line.trim()) {
+        if (!inQ && sitBuf.length) flushSit();
+        inQ = false;
+      }
+    });
+    if (sitBuf.length) flushSit();
+
+    // Parse answer key lines and remap to global numbers
+    if (ch.akText) {
+      const base = gn - ln;
+      akBlocks.push({ t: 'ch', text: ch.name });
+      ch.akText.split('\n').forEach(line => {
+        // Match: "1. A — explanation" or "1. A - explanation" or "1. A explanation"
+        const m = line.match(/^(\d+)\.\s+([A-Da-d])\s*[—\-–]?\s*(.*)/);
+        if (m) {
+          const localN = parseInt(m[1]);
+          const letter = m[2].toUpperCase();
+          const explanation = m[3].trim();
+          const globalN = base + localN;
+          akBlocks.push({ t: 'ans', g: globalN, letter, explanation });
+        }
+      });
+    }
+  });
+
+  return { qBlocks, akBlocks, ak };
+}
+
+// ── SHOW OUTPUT ─────────────────────────────────────
+function showOut(ak) {
+  const area = document.getElementById('out-area');
+  area.style.display = 'block';
+  area.scrollIntoView({ behavior: 'smooth' });
+
+  const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
+  document.getElementById('outh').textContent = title;
+  const tq = result.qBlocks.filter(b => b.t === 'q').length;
+  const tc = result.qBlocks.filter(b => b.t === 'ch').length;
+  const ta = result.akBlocks.filter(b => b.t === 'ans').length;
+  document.getElementById('outm').textContent =
+    `${tq} items · ${tc} chapter(s) · ${ta} answers extracted · key: ${ak}`;
+
+  let prev = '';
+  result.qBlocks.forEach(b => {
+    if (b.t === 'ch') prev += `\n── ${b.text.toUpperCase()} ──\n\n`;
+    else if (b.t === 'sit') prev += `${b.text}\n\n`;
+    else if (b.t === 'q') {
+      prev += `${b.text}\n`;
+      b.opts.forEach(o => prev += `   ${o}\n`);
+      prev += '\n';
+    }
+  });
+
+  if (ak !== 'none' && result.akBlocks.length) {
+    prev += '\n\n── ANSWER KEY ──\n\n';
+    result.akBlocks.forEach(b => {
+      if (b.t === 'ch') prev += `\n${b.text.toUpperCase()}\n`;
+      else if (b.t === 'ans') {
+        prev += `${b.g}. ${b.letter}`;
+        if (b.explanation) prev += ` — ${b.explanation}`;
+        prev += '\n';
+      }
+    });
+  }
+
+  document.getElementById('outp').textContent = prev.trim();
+  document.getElementById('dlkey').style.display = ak === 'separate' ? 'inline-flex' : 'none';
+}
+
+// ── DOCX ────────────────────────────────────────────
+async function dlDocx() {
+  if (!result) return;
+  const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer, PageBreak } = docx;
+  const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
+  const inst = document.getElementById('einst').value.trim();
+  const { qBlocks, akBlocks, ak } = result;
+
+  const children = buildDocxHeader(title, inst);
+  buildDocxQuestions(qBlocks, children);
+
+  if (ak === 'same' && akBlocks.length) {
+    children.push(new Paragraph({ children: [new PageBreak()] }));
+    children.push(new Paragraph({ text: 'ANSWER KEY', heading: HeadingLevel.HEADING_2, spacing: { after: 140 } }));
+    buildDocxAnswers(akBlocks, children);
+  }
+
+  const doc2 = new Document({ sections: [{ children }] });
+  const blob = await Packer.toBlob(doc2);
+  dl(blob, `${title.replace(/\s+/g, '_')}.docx`);
+  toast('DOCX downloaded!');
+}
+
+async function dlKeyDocx() {
+  if (!result) return;
+  const { Document, Paragraph, HeadingLevel, Packer } = docx;
+  const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
+  const children = [
+    new Paragraph({ text: `ANSWER KEY — ${title}`, heading: HeadingLevel.HEADING_1, spacing: { after: 180 } })
+  ];
+  buildDocxAnswers(result.akBlocks, children);
+  const doc2 = new Document({ sections: [{ children }] });
+  const blob = await Packer.toBlob(doc2);
+  dl(blob, `${title.replace(/\s+/g, '_')}_AnswerKey.docx`);
+  toast('Answer Key downloaded!');
+}
+
+function buildDocxHeader(title, inst) {
+  const { Paragraph, TextRun, HeadingLevel, AlignmentType } = docx;
+  const ch = [];
+  ch.push(new Paragraph({
+    children: [
+      new TextRun({ text: 'Mapuá University', bold: true, size: 18, color: '1b2d45' }),
+      new TextRun({ text: '\t\t\t\t\t\t\t\t', size: 18 }),
+      new TextRun({ text: 'School of Nursing', bold: true, size: 18, color: '1b2d45' }),
+    ],
+    alignment: AlignmentType.LEFT, spacing: { after: 60 }
+  }));
+  ch.push(new Paragraph({ text: title, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, spacing: { after: 120 } }));
+  if (inst) ch.push(new Paragraph({ children: [new TextRun({ text: inst, italics: true, size: 22 })], spacing: { after: 200 } }));
+  return ch;
+}
+
+function buildDocxQuestions(qBlocks, ch) {
+  const { Paragraph, TextRun, HeadingLevel } = docx;
+  qBlocks.forEach(b => {
+    if (b.t === 'ch') {
+      ch.push(new Paragraph({ text: b.text.toUpperCase(), heading: HeadingLevel.HEADING_2, spacing: { before: 280, after: 100 } }));
+    } else if (b.t === 'sit') {
+      ch.push(new Paragraph({ children: [new TextRun({ text: b.text, italics: true, size: 22 })], spacing: { after: 80 } }));
+    } else if (b.t === 'q') {
+      ch.push(new Paragraph({ children: [new TextRun({ text: b.text, size: 24 })], spacing: { before: 80, after: 30 } }));
+      b.opts.forEach(o => ch.push(new Paragraph({ children: [new TextRun({ text: `        ${o}`, size: 24 })], spacing: { after: 20 } })));
+    }
+  });
+}
+
+function buildDocxAnswers(akBlocks, ch) {
+  const { Paragraph, TextRun, HeadingLevel } = docx;
+  akBlocks.forEach(b => {
+    if (b.t === 'ch') {
+      ch.push(new Paragraph({ text: b.text.toUpperCase(), heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 80 } }));
+    } else if (b.t === 'ans') {
+      const txt = b.explanation
+        ? `${b.g}. ${b.letter} — ${b.explanation}`
+        : `${b.g}. ${b.letter}`;
+      ch.push(new Paragraph({ children: [new TextRun({ text: txt, size: 22 })], spacing: { after: 60 } }));
+    }
+  });
+}
+
+// ── PDF ─────────────────────────────────────────────
+function dlPdf() {
+  if (!result) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
+  const inst = document.getElementById('einst').value.trim();
+  const { qBlocks, akBlocks, ak } = result;
+  const lm = 20, pw = 215.9, uw = pw - 40;
+  let y = 20;
+  const chk = (n = 10) => { if (y + n > 270) { doc.addPage(); y = 20; } };
+
+  // Header
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(27, 45, 69);
+  doc.text('Mapuá University', lm, y);
+  doc.text('School of Nursing', pw - lm, y, { align: 'right' });
+  y += 2;
+  doc.setDrawColor(180, 160, 130); doc.setLineWidth(0.3);
+  doc.line(lm, y + 1, pw - lm, y + 1); y += 6;
+  doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+  doc.text(title, pw / 2, y, { align: 'center' }); y += 8;
+  if (inst) {
+    doc.setFontSize(10); doc.setFont('helvetica', 'italic');
+    const ls = doc.splitTextToSize(inst, uw);
+    doc.text(ls, lm, y); y += ls.length * 5 + 4;
+    doc.setFont('helvetica', 'normal');
+  }
+
+  // Questions
+  qBlocks.forEach(b => {
+    if (b.t === 'ch') {
+      chk(14); y += 4;
+      doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+      doc.text(b.text.toUpperCase(), lm, y); y += 7;
+      doc.setFont('helvetica', 'normal');
+    } else if (b.t === 'sit') {
+      chk(10); doc.setFontSize(9); doc.setFont('helvetica', 'italic');
+      const ls = doc.splitTextToSize(b.text, uw);
+      doc.text(ls, lm, y); y += ls.length * 4.5 + 2;
+      doc.setFont('helvetica', 'normal');
+    } else if (b.t === 'q') {
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+      const qls = doc.splitTextToSize(b.text, uw);
+      const ols = b.opts.map(o => doc.splitTextToSize(`        ${o}`, uw));
+      chk(qls.length * 4.5 + ols.reduce((s, l) => s + l.length * 4, 0) + 4);
+      doc.text(qls, lm, y); y += qls.length * 4.5;
+      doc.setFontSize(9);
+      ols.forEach(ol => { doc.text(ol, lm, y); y += ol.length * 4; });
+      y += 3;
+    }
+  });
+
+  // Answer Key
+  if (ak !== 'none' && akBlocks.length) {
+    doc.addPage(); y = 20;
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.text('ANSWER KEY', lm, y); y += 8;
+    akBlocks.forEach(b => {
+      if (b.t === 'ch') {
+        chk(12); y += 3;
+        doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+        doc.text(b.text.toUpperCase(), lm, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+      } else if (b.t === 'ans') {
+        doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+        const txt = b.explanation
+          ? `${b.g}. ${b.letter} — ${b.explanation}`
+          : `${b.g}. ${b.letter}`;
+        const ls = doc.splitTextToSize(txt, uw);
+        chk(ls.length * 4.5 + 2);
+        doc.text(ls, lm, y); y += ls.length * 4.5 + 2;
+      }
+    });
+  }
+
+  doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+  toast('PDF downloaded!');
+}
+
+// ── UTILS ───────────────────────────────────────────
+function dl(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+function resetAll() {
+  chs = []; ctr = 0; result = null; renderChs();
+  document.getElementById('prog-area').style.display = 'none';
+  document.getElementById('out-area').style.display = 'none';
+  document.getElementById('etitle').value = '';
+  document.getElementById('einst').value = '';
+  document.querySelector('input[name=ak][value=same]').checked = true;
+  rsty(); toast('Reset!');
+}
+
+renderChs();
+addCh();
+</script>
+</body>
+</html>
