@@ -901,16 +901,20 @@ async function dlDocx() {
 async function dlKeyDocx() {
   if (!result) return;
   try {
-  const { Document, Paragraph, HeadingLevel, Packer } = window.docx;
-  const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
-  const children = [
-    new Paragraph({ text: `ANSWER KEY — ${title}`, heading: HeadingLevel.HEADING_1, spacing: { after: 180 } })
-  ];
-  buildDocxAnswers(result.akBlocks, children);
-  const doc2 = new Document({ sections: [{ children }] });
-  const blob = await Packer.toBlob(doc2);
-  dl(blob, `${title.replace(/\s+/g, '_')}_AnswerKey.docx`);
-  toast('Answer Key downloaded!');
+    const { Document, Paragraph, HeadingLevel, Packer } = window.docx;
+    const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
+    const children = [
+      new Paragraph({ text: `ANSWER KEY — ${title}`, heading: HeadingLevel.HEADING_1, spacing: { after: 180 } })
+    ];
+    buildDocxAnswers(result.akBlocks, children);
+    const doc2 = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc2);
+    dl(blob, `${title.replace(/\s+/g, '_')}_AnswerKey.docx`);
+    toast('Answer Key downloaded!');
+  } catch(err) {
+    console.error('DOCX Key error:', err);
+    toast('DOCX failed: ' + err.message);
+  }
 }
 
 function buildDocxHeader(title, inst) {
