@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Nunito:wght@300;400;600&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js"></script>
+<script>window.docx = window.docx || {};</script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 :root {
@@ -152,8 +153,20 @@ header{padding:24px 0 16px;}
 .dz-txt{font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);pointer-events:none;line-height:1.5;}
 .dz-txt strong{color:var(--brown2);display:block;font-size:9.5px;}
 .dz.ak-zone .dz-txt strong{color:var(--navy);}
-.thumb-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
-.thumb-row img{height:40px;width:40px;object-fit:cover;border-radius:3px;border:1px solid var(--border);}
+.thumb-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;}
+.thumb-item{position:relative;cursor:grab;touch-action:none;user-select:none;}
+.thumb-item:active{cursor:grabbing;}
+.thumb-item img{height:52px;width:52px;object-fit:cover;border-radius:4px;border:1px solid var(--border);display:block;pointer-events:none;}
+.thumb-item .thumb-num{
+  position:absolute;bottom:2px;left:2px;
+  background:rgba(13,27,42,0.75);color:#fdfaf4;
+  font-family:'DM Mono',monospace;font-size:8px;
+  border-radius:2px;padding:1px 4px;pointer-events:none;
+}
+.thumb-item.dragging{opacity:0.35;border:1.5px dashed var(--brown2);border-radius:4px;}
+.thumb-item.drag-over{outline:2px solid var(--brown2);border-radius:4px;}
+.thumb-hint{font-family:'DM Mono',monospace;font-size:8.5px;color:var(--text3);margin-top:3px;}
+.thumb-hint.ak{color:var(--navy);}
 .tcnt{font-family:'DM Mono',monospace;font-size:8.5px;color:var(--brown2);margin-top:3px;}
 .tcnt.ak{color:var(--navy);}
 
@@ -405,14 +418,88 @@ function renderThumbs(id, field, files) {
   const cnt = document.getElementById(`tc-${id}-${field}`);
   if (!row) return;
   row.innerHTML = '';
-  files.forEach(f => {
+
+  files.forEach((f, idx) => {
+    const item = document.createElement('div');
+    item.className = 'thumb-item';
+    item.draggable = true;
+    item.dataset.idx = idx;
+
     const img = document.createElement('img');
     img.src = URL.createObjectURL(f);
-    row.appendChild(img);
+
+    const num = document.createElement('div');
+    num.className = 'thumb-num';
+    num.textContent = idx + 1;
+
+    item.appendChild(img);
+    item.appendChild(num);
+    row.appendChild(item);
+
+    // Desktop drag
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', idx);
+      setTimeout(() => item.classList.add('dragging'), 0);
+    });
+    item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    item.addEventListener('dragover', e => { e.preventDefault(); item.classList.add('drag-over'); });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+      const toIdx = parseInt(item.dataset.idx);
+      if (fromIdx === toIdx) return;
+      reorderFiles(id, field, fromIdx, toIdx);
+    });
+
+    // Mobile touch drag
+    let touchStartX, touchStartY, clone, fromIdx2;
+    item.addEventListener('touchstart', e => {
+      fromIdx2 = parseInt(item.dataset.idx);
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      clone = item.cloneNode(true);
+      clone.style.cssText = `position:fixed;opacity:0.7;pointer-events:none;z-index:999;width:52px;height:52px;`;
+      document.body.appendChild(clone);
+      item.classList.add('dragging');
+    }, { passive: true });
+    item.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      clone.style.left = (t.clientX - 26) + 'px';
+      clone.style.top = (t.clientY - 26) + 'px';
+      // Highlight target
+      row.querySelectorAll('.thumb-item').forEach(el => el.classList.remove('drag-over'));
+      const el = document.elementFromPoint(t.clientX, t.clientY)?.closest('.thumb-item');
+      if (el && el !== item) el.classList.add('drag-over');
+    }, { passive: false });
+    item.addEventListener('touchend', e => {
+      item.classList.remove('dragging');
+      clone?.remove();
+      row.querySelectorAll('.thumb-item').forEach(el => el.classList.remove('drag-over'));
+      const t = e.changedTouches[0];
+      const target = document.elementFromPoint(t.clientX, t.clientY)?.closest('.thumb-item');
+      if (target && parseInt(target.dataset.idx) !== fromIdx2) {
+        reorderFiles(id, field, fromIdx2, parseInt(target.dataset.idx));
+      }
+    });
   });
+
   if (cnt) cnt.textContent = files.length
-    ? `${files.length} image${files.length > 1 ? 's' : ''} selected`
+    ? `${files.length} image${files.length > 1 ? 's' : ''} · drag to reorder`
     : '';
+}
+
+function reorderFiles(id, field, fromIdx, toIdx) {
+  const c = chs.find(c => c.id === id);
+  if (!c) return;
+  const arr = [...c[field]];
+  const [moved] = arr.splice(fromIdx, 1);
+  arr.splice(toIdx, 0, moved);
+  c[field] = arr;
+  renderThumbs(id, field, arr);
 }
 
 function renderChs() {
@@ -452,7 +539,7 @@ function renderChs() {
             ondragover="dzo(event,${c.id},'qFiles')" ondragleave="dzl(event,${c.id},'qFiles')" ondrop="dzd(event,${c.id},'qFiles')">
             <input type="file" multiple accept="image/*" capture="environment" onchange="handleFiles(${c.id},'qFiles',this.files)"/>
             <div class="dz-ico">📄</div>
-            <div class="dz-txt"><strong>Question images</strong>Camera, gallery, or drag</div>
+            <div class="dz-txt"><strong>Question images</strong>Upload in reading order! Page 1 first, then page 2...</div>
           </div>
           <div class="thumb-row" id="tr-${c.id}-qFiles"></div>
           <div class="tcnt" id="tc-${c.id}-qFiles"></div>
@@ -600,21 +687,21 @@ async function gen() {
 
 // ── PROMPTS ─────────────────────────────────────────
 function qPrompt(name, count, raw) {
-  return `You are a nursing exam formatter. Extract and reformat exactly ${count} multiple choice questions from chapter "${name}" from the raw OCR text below.
+  return `You are a nursing exam formatter. Extract and reformat multiple choice questions from chapter "${name}" from the raw OCR text below.
 
 RULES:
-1. Extract exactly ${count} questions (use all if fewer exist).
-2. Convert option formats like (1)(2)(3)(4) or 1. 2. 3. 4. → A. B. C. D.
-3. Keep situation/instruction blocks like "(For items 1-5):" or "Situation:" above their questions. Label them SITUATION: or FOR_ITEMS:.
-4. Fix obvious OCR errors but preserve medical terminology.
-5. Number questions starting from 1.
+1. Extract up to ${count} questions. Only include questions that have COMPLETE text AND all 4 options visible. If a question has missing or cut-off options, SKIP it entirely — do NOT guess or make up options.
+2. Convert option formats like (1)(2)(3)(4) or a. b. c. d. or 1. 2. 3. 4. → A. B. C. D.
+3. CRITICAL: Do NOT add any SITUATION or FOR_ITEMS blocks unless the exact words Situation: or For items are LITERALLY visible in the OCR text. Never invent situation blocks.
+4. Fix obvious OCR errors but preserve medical terminology exactly.
+5. ALWAYS renumber questions starting from 1 regardless of what numbers appear in the scan.
 6. Do NOT include any answers.
+7. Treat all OCR text as one continuous set of questions even if from multiple pages.
 
 WRAP output in QUESTIONS_START and QUESTIONS_END tags.
 
 FORMAT:
 QUESTIONS_START
-[SITUATION: text if applicable]
 1. Question text
 A. option
 B. option
@@ -761,6 +848,7 @@ function showOut(ak) {
 // ── DOCX ────────────────────────────────────────────
 async function dlDocx() {
   if (!result) return;
+  if (!window.docx || !window.docx.Document) { toast('DOCX library not loaded yet — wait a moment and try again.'); return; }
   const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer, PageBreak } = docx;
   const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
   const inst = document.getElementById('einst').value.trim();
