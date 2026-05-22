@@ -412,6 +412,14 @@ function handleFiles(id, field, fl) {
   renderThumbs(id, field, c[field]);
 }
 
+function appendFiles(id, field, fl) {
+  const c = chs.find(c => c.id === id);
+  if (!c) return;
+  // Append to existing files instead of replacing
+  c[field] = [...c[field], ...Array.from(fl)];
+  renderThumbs(id, field, c[field]);
+}
+
 function renderThumbs(id, field, files) {
   const isAK = field === 'akFiles';
   const row = document.getElementById(`tr-${id}-${field}`);
@@ -487,9 +495,23 @@ function renderThumbs(id, field, files) {
     });
   });
 
-  if (cnt) cnt.textContent = files.length
-    ? `${files.length} image${files.length > 1 ? 's' : ''} · drag to reorder`
-    : '';
+  if (cnt) {
+    if (files.length) {
+      cnt.innerHTML = `${files.length} image${files.length > 1 ? 's' : ''} · drag to reorder &nbsp;<button onclick="clearFiles(${0},'${0}')" style="font-family:'DM Mono',monospace;font-size:8px;background:none;border:1px solid rgba(160,50,50,.3);color:rgba(160,50,50,.6);border-radius:3px;padding:1px 5px;cursor:pointer;" id="clrbtn-placeholder">× clear</button>`;
+      // Fix the clear button with correct id and field
+      const btn = cnt.querySelector('button');
+      if (btn) btn.onclick = () => clearFiles(id, field);
+    } else {
+      cnt.innerHTML = '';
+    }
+  }
+}
+
+function clearFiles(id, field) {
+  const c = chs.find(c => c.id === id);
+  if (!c) return;
+  c[field] = [];
+  renderThumbs(id, field, []);
 }
 
 function reorderFiles(id, field, fromIdx, toIdx) {
@@ -537,9 +559,9 @@ function renderChs() {
           </div>
           <div class="dz" id="dz-${c.id}-qFiles"
             ondragover="dzo(event,${c.id},'qFiles')" ondragleave="dzl(event,${c.id},'qFiles')" ondrop="dzd(event,${c.id},'qFiles')">
-            <input type="file" multiple accept="image/*" capture="environment" onchange="handleFiles(${c.id},'qFiles',this.files)"/>
+            <input type="file" multiple accept="image/*" onchange="appendFiles(${c.id},'qFiles',this.files)"/>
             <div class="dz-ico">📄</div>
-            <div class="dz-txt"><strong>Question images</strong>Upload in reading order! Page 1 first, then page 2...</div>
+            <div class="dz-txt"><strong>Tap to add images</strong>Each tap adds more — select multiple or one at a time</div>
           </div>
           <div class="thumb-row" id="tr-${c.id}-qFiles"></div>
           <div class="tcnt" id="tc-${c.id}-qFiles"></div>
@@ -551,9 +573,9 @@ function renderChs() {
           </div>
           <div class="dz ak-zone" id="dz-${c.id}-akFiles"
             ondragover="dzo(event,${c.id},'akFiles')" ondragleave="dzl(event,${c.id},'akFiles')" ondrop="dzd(event,${c.id},'akFiles')">
-            <input type="file" multiple accept="image/*" capture="environment" onchange="handleFiles(${c.id},'akFiles',this.files)"/>
+            <input type="file" multiple accept="image/*" onchange="appendFiles(${c.id},'akFiles',this.files)"/>
             <div class="dz-ico">🔑</div>
-            <div class="dz-txt"><strong>Answer key images</strong>Camera, gallery, or drag</div>
+            <div class="dz-txt"><strong>Tap to add images</strong>Each tap adds more — select multiple or one at a time</div>
           </div>
           <div class="thumb-row" id="tr-${c.id}-akFiles"></div>
           <div class="tcnt ak" id="tc-${c.id}-akFiles"></div>
