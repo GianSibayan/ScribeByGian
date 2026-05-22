@@ -634,20 +634,30 @@ function fileToBase64(file) {
   });
 }
 
-// ── GEMINI VISION ────────────────────────────────────
-async function callGemini(prompt, imageFiles = []) {
-  const parts = [];
-  // Add images first
-  for (const file of imageFiles) {
-    const b64 = await fileToBase64(file);
-    parts.push({ inline_data: { mime_type: file.type || 'image/jpeg', data: b64 } });
-  }
-  // Add text prompt
-  parts.push({ text: prompt });
-
+// ── EXTRACT TEXT FROM ONE IMAGE ──────────────────────
+async function extractTextFromImage(file) {
+  const b64 = await fileToBase64(file);
+  const parts = [
+    { inline_data: { mime_type: file.type || 'image/jpeg', data: b64 } },
+    { text: `Extract ALL text from this scanned textbook page exactly as it appears. 
+Read in correct reading order — if two columns, read left column top-to-bottom then right column top-to-bottom.
+Include all question numbers, question text, and all answer options exactly as printed.
+Do not interpret, format, or skip anything. Just output the raw text.` }
+  ];
   const r = await fetch(PROXY_URL, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ parts })
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e?.error || 'API error'); }
+  const d = await r.json();
+  return d.text || '';
+}
+
+// ── FORMAT TEXT WITH GEMINI ──────────────────────────
+async function callGemini(prompt) {
+  const r = await fetch(PROXY_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parts: [{ text: prompt }] })
   });
   if (!r.ok) { const e = await r.json(); throw new Error(e?.error || 'API error'); }
   const d = await r.json();
@@ -666,26 +676,45 @@ async function gen() {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Working…';
 
   const hasAK = ak !== 'none';
-  // Steps: per chapter: reading questions, reading answer key. Plus assemble + done
-  total = chs.length * (hasAK ? 2 : 1) + 2;
+  // Steps per chapter: extract Q text + format Q + (extract AK text + format AK). Plus assemble + done
+  total = chs.length * (hasAK ? 4 : 2) + 2;
   showProg();
 
   try {
     const res = [];
     for (const c of chs) {
-      // Send images directly to Gemini Vision
-      const s1 = log(`Reading questions: ${c.name} (${c.qFiles.length} image${c.qFiles.length>1?'s':''})`);
-      const qOut = await callGemini(qPrompt(c.name, c.count), c.qFiles);
-      const qText = parseSection(qOut, 'QUESTIONS');
+      // Step 1: Extract raw text from each question image one at a time
+      const s1 = log(`Extracting text: ${c.name} (${c.qFiles.length} image${c.qFiles.length>1?'s':''})`);
+      let qRaw = '';
+      for (let i = 0; i < c.qFiles.length; i++) {
+        log(`  Reading image ${i+1} of ${c.qFiles.length}…`, 'active');
+        qRaw += '\n' + await extractTextFromImage(c.qFiles[i]);
+      }
       doneLog(s1);
+
+      // Step 2: Format extracted text into questions
+      const s2 = log(`Formatting questions: ${c.name}`);
+      const qOut = await callGemini(qPrompt(c.name, c.count, qRaw));
+      const qText = parseSection(qOut, 'QUESTIONS');
+      doneLog(s2);
 
       let akText = '';
       if (hasAK) {
         if (c.akFiles.length) {
-          const s2 = log(`Reading answer key: ${c.name} (${c.akFiles.length} image${c.akFiles.length>1?'s':''})`);
-          const akOut = await callGemini(akPrompt(c.name, c.count), c.akFiles);
+          // Step 3: Extract raw text from answer key images one at a time
+          const s3 = log(`Extracting answer key: ${c.name} (${c.akFiles.length} image${c.akFiles.length>1?'s':''})`);
+          let akRaw = '';
+          for (let i = 0; i < c.akFiles.length; i++) {
+            log(`  Reading image ${i+1} of ${c.akFiles.length}…`, 'active');
+            akRaw += '\n' + await extractTextFromImage(c.akFiles[i]);
+          }
+          doneLog(s3);
+
+          // Step 4: Format extracted text into answer key
+          const s4 = log(`Formatting answer key: ${c.name}`);
+          const akOut = await callGemini(akPrompt(c.name, c.count, akRaw));
           akText = parseSection(akOut, 'ANSWERS');
-          doneLog(s2);
+          doneLog(s4);
         } else {
           log(`No answer key images for: ${c.name} — skipping`, 'done');
           done++; setP((done / total) * 100, `${done} of ${total} steps`);
@@ -695,9 +724,9 @@ async function gen() {
       res.push({ name: c.name, qText, akText, count: c.count });
     }
 
-    const s3 = log('Assembling document');
+    const s5 = log('Assembling document');
     result = assemble(res, ak);
-    doneLog(s3);
+    doneLog(s5);
     log('Complete!', 'done'); done++; setP(100, 'Done!');
     showOut(ak);
   } catch (err) {
@@ -710,19 +739,18 @@ async function gen() {
 }
 
 // ── PROMPTS ─────────────────────────────────────────
-function qPrompt(name, count) {
-  return `You are a nursing exam formatter. Look at the provided scanned textbook page image(s) for chapter "${name}".
+function qPrompt(name, count, raw) {
+  return `You are a nursing exam formatter. The raw extracted text below is from scanned textbook pages for chapter "${name}". The text was extracted image by image and concatenated in order.
 
 RULES:
-1. Read the images carefully. Pages may have single or two-column layouts — read in correct reading order (left column top-to-bottom, then right column top-to-bottom, or single column top-to-bottom).
-2. Extract up to ${count} multiple choice questions.
-3. Convert option formats like (1)(2)(3)(4) or a. b. c. d. or 1. 2. 3. 4. -> A. B. C. D.
-4. CRITICAL: Do NOT add any SITUATION or FOR_ITEMS blocks unless the exact words "Situation:" or "For items" are literally visible in the image. Never invent them.
+1. Extract up to ${count} multiple choice questions.
+2. Convert option formats like (1)(2)(3)(4) or a. b. c. d. or 1. 2. 3. 4. -> A. B. C. D.
+3. CRITICAL: Do NOT add any SITUATION or FOR_ITEMS blocks unless the exact words "Situation:" or "For items" are literally in the text. Never invent them.
+4. Fix obvious OCR errors but preserve medical terminology exactly. Rejoin hyphenated line breaks (e.g. "recipi-" + "ent" -> "recipient").
 5. Preserve the original question numbers exactly as they appear. Do not renumber.
 6. Do NOT include any answers.
-7. If a question is split across multiple images (stem on one page, options on the next), reconstruct it fully using all provided images.
-8. Preserve medical terminology exactly. Fix only obvious print artifacts.
-9. Only include questions that are fully visible and complete. Skip any that are truly cut off with no continuation.
+7. ORPHANED CONTENT: If options appear at the start with no question above them, AND a question stem appears near the end with no options, they belong together — match and combine them.
+8. Only skip a question if it has no stem AND no options anywhere in the text.
 
 WRAP output in QUESTIONS_START and QUESTIONS_END tags.
 
@@ -735,21 +763,23 @@ C. option
 D. option
 
 2. Next question...
-QUESTIONS_END`;
+QUESTIONS_END
+
+RAW EXTRACTED TEXT:
+${raw}`;
 }
 
-
-function akPrompt(name, count) {
-  return `You are a nursing exam answer key formatter. Look at the provided scanned textbook page image(s) for the answer key of chapter "${name}".
+function akPrompt(name, count, raw) {
+  return `You are a nursing exam answer key formatter. The raw extracted text below is from the answer key pages of chapter "${name}".
 
 RULES:
-1. Read the images carefully. Pages may be single or two-column — read in correct order.
-2. Extract answers for all visible items up to item ${count}.
-3. Convert answer options: (1)->A, (2)->B, (3)->C, (4)->D. Also 1.->A, 2.->B, 3.->C, 4.->D.
-4. Keep the full explanation text after the letter answer.
-5. If an explanation is split across multiple images, reconstruct it fully.
-6. Preserve medical terminology exactly.
-7. Number answers as they appear in the image.
+1. Extract answers for all visible items up to item ${count}.
+2. Convert answer options: (1)->A, (2)->B, (3)->C, (4)->D. Also 1.->A, 2.->B, 3.->C, 4.->D.
+3. Keep the full explanation text after the letter answer.
+4. If an explanation is split across lines, rejoin it into one continuous line.
+5. Preserve medical terminology exactly.
+6. Number answers as they appear in the text.
+7. Ignore any text that is clearly from a different section (questions, chapter headings, etc).
 
 WRAP output in ANSWERS_START and ANSWERS_END tags.
 
@@ -757,9 +787,11 @@ FORMAT — one line per item:
 ANSWERS_START
 1. A — Full explanation here.
 2. C — Full explanation here.
-ANSWERS_END`;
-}
+ANSWERS_END
 
+RAW EXTRACTED TEXT:
+${raw}`;
+}
 
 // ── PARSE SECTIONS ──────────────────────────────────
 function parseSection(text, tag) {
