@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>Scribe</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Nunito:wght@300;400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js"></script>
 <script>window.docx = window.docx || {};</script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -290,7 +289,7 @@ footer{
 
         <div class="bc">
           <div class="bn">Scribe<em>.</em></div>
-          <div class="bs">OCR · Test Generator</div>
+          <div class="bs">Vision AI · Test Generator</div>
         </div>
 
         <!-- RIGHT: School of Nursing -->
@@ -620,17 +619,30 @@ function doneLog(id) {
   done++; setP((done / total) * 100, `${done} of ${total} steps`);
 }
 
-// ── OCR ─────────────────────────────────────────────
-async function ocr(file) {
-  const { data: { text } } = await Tesseract.recognize(file, 'eng', { logger: () => {} });
-  return text;
+// ── FILE TO BASE64 ──────────────────────────────────
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
-// ── GEMINI ──────────────────────────────────────────
-async function callGemini(prompt) {
+// ── GEMINI VISION ────────────────────────────────────
+async function callGemini(prompt, imageFiles = []) {
+  const parts = [];
+  // Add images first
+  for (const file of imageFiles) {
+    const b64 = await fileToBase64(file);
+    parts.push({ inline_data: { mime_type: file.type || 'image/jpeg', data: b64 } });
+  }
+  // Add text prompt
+  parts.push({ text: prompt });
+
   const r = await fetch(PROXY_URL, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt })
+    body: JSON.stringify({ parts })
   });
   if (!r.ok) { const e = await r.json(); throw new Error(e?.error || 'API error'); }
   const d = await r.json();
@@ -648,54 +660,39 @@ async function gen() {
   const btn = document.getElementById('gbtn');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Working…';
 
-  // Steps: per chapter: OCR questions, format questions, OCR answer key (if files), format answer key
-  // Plus 2 for assemble + done
   const hasAK = ak !== 'none';
-  total = chs.length * (hasAK ? 4 : 2) + 2;
+  // Steps: per chapter: reading questions, reading answer key. Plus assemble + done
+  total = chs.length * (hasAK ? 2 : 1) + 2;
   showProg();
 
   try {
     const res = [];
     for (const c of chs) {
-      // OCR questions
-      const s1 = log(`OCR questions: ${c.name}`);
-      let qRaw = '';
-      for (const f of c.qFiles) qRaw += '\n' + await ocr(f);
-      doneLog(s1);
-
-      // Format questions
-      const s2 = log(`Formatting questions: ${c.name}`);
-      const qOut = await callGemini(qPrompt(c.name, c.count, qRaw));
+      // Send images directly to Gemini Vision
+      const s1 = log(`Reading questions: ${c.name} (${c.qFiles.length} image${c.qFiles.length>1?'s':''})`);
+      const qOut = await callGemini(qPrompt(c.name, c.count), c.qFiles);
       const qText = parseSection(qOut, 'QUESTIONS');
-      doneLog(s2);
+      doneLog(s1);
 
       let akText = '';
       if (hasAK) {
         if (c.akFiles.length) {
-          // OCR answer key
-          const s3 = log(`OCR answer key: ${c.name}`);
-          let akRaw = '';
-          for (const f of c.akFiles) akRaw += '\n' + await ocr(f);
-          doneLog(s3);
-
-          // Format answer key
-          const s4 = log(`Formatting answer key: ${c.name}`);
-          const akOut = await callGemini(akPrompt(c.name, c.count, akRaw));
+          const s2 = log(`Reading answer key: ${c.name} (${c.akFiles.length} image${c.akFiles.length>1?'s':''})`);
+          const akOut = await callGemini(akPrompt(c.name, c.count), c.akFiles);
           akText = parseSection(akOut, 'ANSWERS');
-          doneLog(s4);
+          doneLog(s2);
         } else {
-          // Skip AK steps but still tick progress
           log(`No answer key images for: ${c.name} — skipping`, 'done');
-          done += 2; setP((done / total) * 100, `${done} of ${total} steps`);
+          done++; setP((done / total) * 100, `${done} of ${total} steps`);
         }
       }
 
       res.push({ name: c.name, qText, akText, count: c.count });
     }
 
-    const s5 = log('Assembling document');
+    const s3 = log('Assembling document');
     result = assemble(res, ak);
-    doneLog(s5);
+    doneLog(s3);
     log('Complete!', 'done'); done++; setP(100, 'Done!');
     showOut(ak);
   } catch (err) {
@@ -708,22 +705,19 @@ async function gen() {
 }
 
 // ── PROMPTS ─────────────────────────────────────────
-function qPrompt(name, count, raw) {
-  return `You are a nursing exam formatter. Extract and reformat multiple choice questions from chapter "${name}" from the raw OCR text below.
+function qPrompt(name, count) {
+  return `You are a nursing exam formatter. Look at the provided scanned textbook page image(s) for chapter "${name}".
 
 RULES:
-1. Extract up to ${count} questions.
-2. Convert option formats like (1)(2)(3)(4) or a. b. c. d. or 1. 2. 3. 4. -> A. B. C. D.
-3. CRITICAL: Do NOT add any SITUATION or FOR_ITEMS blocks unless the exact words Situation: or For items are LITERALLY visible in the OCR text. Never invent situation blocks.
-4. Fix obvious OCR errors but preserve medical terminology exactly. Also rejoin hyphenated line breaks — if a word is split across lines like 'recipi-' then 'ent is a parent', rejoin it to 'recipient is a parent'. Options can span multiple lines — collect all the text until the next option letter or question number.
-5. Preserve the original question numbers EXACTLY as they appear in the scan. Do not renumber. If the scan starts at 3, output starts at 3.
+1. Read the images carefully. Pages may have single or two-column layouts — read in correct reading order (left column top-to-bottom, then right column top-to-bottom, or single column top-to-bottom).
+2. Extract up to ${count} multiple choice questions.
+3. Convert option formats like (1)(2)(3)(4) or a. b. c. d. or 1. 2. 3. 4. -> A. B. C. D.
+4. CRITICAL: Do NOT add any SITUATION or FOR_ITEMS blocks unless the exact words "Situation:" or "For items" are literally visible in the image. Never invent them.
+5. Preserve the original question numbers exactly as they appear. Do not renumber.
 6. Do NOT include any answers.
-7. Treat all OCR text as one continuous set of questions from multiple pages concatenated together.
-8. ORPHANED CONTENT RULE: Because this text comes from multiple scanned pages joined together, two special cases can occur:
-   CASE A — Options at the very start with no question above them: these are the options for a question whose stem was on the previous page. Look for an incomplete question stem later in the text (a question with no options) and reunite them.
-   CASE B — A question stem at the very end with no options after it: its options are the floating ones at the start of the text. Match them together as one complete question.
-   When you detect CASE A and CASE B together, always combine that stem + those options into one complete question. Never skip or discard them.
-9. Only skip a question if it has no stem AND no options anywhere in the text that could belong to it.
+7. If a question is split across multiple images (stem on one page, options on the next), reconstruct it fully using all provided images.
+8. Preserve medical terminology exactly. Fix only obvious print artifacts.
+9. Only include questions that are fully visible and complete. Skip any that are truly cut off with no continuation.
 
 WRAP output in QUESTIONS_START and QUESTIONS_END tags.
 
@@ -736,34 +730,31 @@ C. option
 D. option
 
 2. Next question...
-QUESTIONS_END
-
-RAW OCR TEXT:
-${raw}`;
+QUESTIONS_END`;
 }
 
-function akPrompt(name, count, raw) {
-  return `You are a nursing exam answer key formatter. The raw OCR text below is from the answer key section of a nursing textbook for chapter "${name}". It contains numbered answers like "1. The answer is (2). Because..." or "1. (1) explanation...".
+
+function akPrompt(name, count) {
+  return `You are a nursing exam answer key formatter. Look at the provided scanned textbook page image(s) for the answer key of chapter "${name}".
 
 RULES:
-1. Extract answers for items 1 through ${count}.
-2. Convert answer options: (1)→A, (2)→B, (3)→C, (4)→D. Also convert 1.→A, 2.→B, 3.→C, 4.→D if used.
-3. Keep the full explanation text after the letter.
-4. Fix obvious OCR errors but preserve medical terminology.
-5. Number answers starting from 1.
+1. Read the images carefully. Pages may be single or two-column — read in correct order.
+2. Extract answers for all visible items up to item ${count}.
+3. Convert answer options: (1)->A, (2)->B, (3)->C, (4)->D. Also 1.->A, 2.->B, 3.->C, 4.->D.
+4. Keep the full explanation text after the letter answer.
+5. If an explanation is split across multiple images, reconstruct it fully.
+6. Preserve medical terminology exactly.
+7. Number answers as they appear in the image.
 
 WRAP output in ANSWERS_START and ANSWERS_END tags.
 
-FORMAT — use EXACTLY this per item:
+FORMAT — one line per item:
 ANSWERS_START
-1. A — Explanation text here.
-2. C — Explanation text here.
-3. B — Explanation text here.
-ANSWERS_END
-
-RAW OCR TEXT:
-${raw}`;
+1. A — Full explanation here.
+2. C — Full explanation here.
+ANSWERS_END`;
 }
+
 
 // ── PARSE SECTIONS ──────────────────────────────────
 function parseSection(text, tag) {
