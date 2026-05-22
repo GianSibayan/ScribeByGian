@@ -379,8 +379,7 @@ footer{
 <div id="toast"></div>
 
 <script>
-const GKEY = "AIzaSyCj0X8SLs0mW4BJ7JdrTjIJS3hyENr2GYg";
-const GURL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GKEY}`;
+const PROXY_URL = "/api/reformat";
 
 let chs = [], ctr = 0, result = null;
 
@@ -520,16 +519,13 @@ async function ocr(file) {
 
 // ── GEMINI ──────────────────────────────────────────
 async function callGemini(prompt) {
-  const r = await fetch(GURL, {
+  const r = await fetch(PROXY_URL, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.15, maxOutputTokens: 8192 }
-    })
+    body: JSON.stringify({ prompt })
   });
-  if (!r.ok) { const e = await r.json(); throw new Error(e?.error?.message || 'Gemini error'); }
+  if (!r.ok) { const e = await r.json(); throw new Error(e?.error || 'API error'); }
   const d = await r.json();
-  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return d.text || '';
 }
 
 // ── MAIN GENERATE ───────────────────────────────────
