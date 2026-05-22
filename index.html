@@ -694,7 +694,7 @@ RULES:
 2. Convert option formats like (1)(2)(3)(4) or a. b. c. d. or 1. 2. 3. 4. -> A. B. C. D.
 3. CRITICAL: Do NOT add any SITUATION or FOR_ITEMS blocks unless the exact words Situation: or For items are LITERALLY visible in the OCR text. Never invent situation blocks.
 4. Fix obvious OCR errors but preserve medical terminology exactly.
-5. ALWAYS renumber questions starting from 1 regardless of what numbers appear in the scan.
+5. Preserve the original question numbers EXACTLY as they appear in the scan. Do not renumber. If the scan starts at 3, output starts at 3.
 6. Do NOT include any answers.
 7. Treat all OCR text as one continuous set of questions from multiple pages concatenated together.
 8. ORPHANED CONTENT RULE: Because this text comes from multiple scanned pages joined together, two special cases can occur:
@@ -775,8 +775,9 @@ function assemble(chRes, ak) {
         sitBuf.push(line);
       } else if (qM) {
         if (!inQ && sitBuf.length) flushSit();
+        const originalNum = parseInt(qM[1]);
         ln++; gn++; inQ = true;
-        qBlocks.push({ t: 'q', g: gn, text: `${gn}. ${qM[2]}`, opts: [] });
+        qBlocks.push({ t: 'q', g: gn, originalNum, text: `${originalNum}. ${qM[2]}`, opts: [] });
         sitBuf = [];
       } else if (oM && inQ) {
         const last = [...qBlocks].reverse().find(b => b.t === 'q');
