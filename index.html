@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>Scribe</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Nunito:wght@300;400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js"></script>
-<script>window.docx = window.docx || {};</script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 :root {
@@ -872,31 +871,37 @@ function showOut(ak) {
 
 // ── DOCX ────────────────────────────────────────────
 async function dlDocx() {
-  if (!result) return;
-  if (!window.docx || !window.docx.Document) { toast('DOCX library not loaded yet — wait a moment and try again.'); return; }
-  const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer, PageBreak } = docx;
-  const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
-  const inst = document.getElementById('einst').value.trim();
-  const { qBlocks, akBlocks, ak } = result;
+  if (!result) { toast('Generate a test paper first.'); return; }
+  try {
+    if (!window.docx || !window.docx.Document) { toast('DOCX library not loaded — refresh and try again.'); return; }
+    const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer, PageBreak } = window.docx;
+    const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
+    const inst = document.getElementById('einst').value.trim();
+    const { qBlocks, akBlocks, ak } = result;
 
-  const children = buildDocxHeader(title, inst);
-  buildDocxQuestions(qBlocks, children);
+    const children = buildDocxHeader(title, inst);
+    buildDocxQuestions(qBlocks, children);
 
-  if (ak === 'same' && akBlocks.length) {
-    children.push(new Paragraph({ children: [new PageBreak()] }));
-    children.push(new Paragraph({ text: 'ANSWER KEY', heading: HeadingLevel.HEADING_2, spacing: { after: 140 } }));
-    buildDocxAnswers(akBlocks, children);
+    if (ak === 'same' && akBlocks.length) {
+      children.push(new Paragraph({ children: [new PageBreak()] }));
+      children.push(new Paragraph({ text: 'ANSWER KEY', heading: HeadingLevel.HEADING_2, spacing: { after: 140 } }));
+      buildDocxAnswers(akBlocks, children);
+    }
+
+    const doc2 = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc2);
+    dl(blob, `${title.replace(/\s+/g, '_')}.docx`);
+    toast('DOCX downloaded!');
+  } catch(err) {
+    console.error('DOCX error:', err);
+    toast('DOCX failed: ' + err.message);
   }
-
-  const doc2 = new Document({ sections: [{ children }] });
-  const blob = await Packer.toBlob(doc2);
-  dl(blob, `${title.replace(/\s+/g, '_')}.docx`);
-  toast('DOCX downloaded!');
 }
 
 async function dlKeyDocx() {
   if (!result) return;
-  const { Document, Paragraph, HeadingLevel, Packer } = docx;
+  try {
+  const { Document, Paragraph, HeadingLevel, Packer } = window.docx;
   const title = document.getElementById('etitle').value.trim() || 'Nursing Exam';
   const children = [
     new Paragraph({ text: `ANSWER KEY — ${title}`, heading: HeadingLevel.HEADING_1, spacing: { after: 180 } })
@@ -909,7 +914,7 @@ async function dlKeyDocx() {
 }
 
 function buildDocxHeader(title, inst) {
-  const { Paragraph, TextRun, HeadingLevel, AlignmentType } = docx;
+  const { Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
   const ch = [];
   ch.push(new Paragraph({
     children: [
@@ -925,7 +930,7 @@ function buildDocxHeader(title, inst) {
 }
 
 function buildDocxQuestions(qBlocks, ch) {
-  const { Paragraph, TextRun, HeadingLevel } = docx;
+  const { Paragraph, TextRun, HeadingLevel } = window.docx;
   qBlocks.forEach(b => {
     if (b.t === 'ch') {
       ch.push(new Paragraph({ text: b.text.toUpperCase(), heading: HeadingLevel.HEADING_2, spacing: { before: 280, after: 100 } }));
@@ -939,7 +944,7 @@ function buildDocxQuestions(qBlocks, ch) {
 }
 
 function buildDocxAnswers(akBlocks, ch) {
-  const { Paragraph, TextRun, HeadingLevel } = docx;
+  const { Paragraph, TextRun, HeadingLevel } = window.docx;
   akBlocks.forEach(b => {
     if (b.t === 'ch') {
       ch.push(new Paragraph({ text: b.text.toUpperCase(), heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 80 } }));
