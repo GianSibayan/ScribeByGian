@@ -233,9 +233,11 @@ input::placeholder,textarea::placeholder{color:var(--text3);}
 .out-prev{
   background:var(--surf3);border:1px solid var(--border2);border-radius:6px;
   padding:13px;font-size:12px;color:var(--text2);line-height:1.75;
-  max-height:260px;overflow-y:auto;white-space:pre-wrap;
-  font-family:'Nunito',sans-serif;margin-bottom:13px;
+  height:260px;overflow-y:auto;white-space:pre-wrap;resize:vertical;
+  font-family:'Nunito',sans-serif;margin-bottom:6px;
+  width:100%;outline:none;transition:border-color .2s;
 }
+.out-prev:focus{border-color:var(--brown2);}
 .dl-row{display:flex;gap:8px;flex-wrap:wrap;}
 
 /* FOOTER */
@@ -369,7 +371,8 @@ footer{
     <div class="out-card">
       <div class="out-h" id="outh">Test Paper Ready</div>
       <div class="out-meta" id="outm"></div>
-      <div class="out-prev" id="outp"></div>
+      <textarea class="out-prev" id="outp" spellcheck="false"></textarea>
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:12px;">✎ Editable — fix any errors before downloading &nbsp;·&nbsp; Scribe by Gian can make mistakes. Please double-check results.</div>
       <div class="dl-row">
         <button class="btn btn-brown" onclick="dlDocx()">↓ DOCX</button>
         <button class="btn btn-outline" onclick="dlPdf()" style="flex:1;">↓ PDF</button>
@@ -581,6 +584,9 @@ function renderChs() {
         </div>
       </div>`;
     list.appendChild(d);
+    // Re-render existing thumbnails after DOM rebuild
+    if (c.qFiles.length) renderThumbs(c.id, 'qFiles', c.qFiles);
+    if (c.akFiles.length) renderThumbs(c.id, 'akFiles', c.akFiles);
   });
 }
 
@@ -860,7 +866,7 @@ function showOut(ak) {
     });
   }
 
-  document.getElementById('outp').textContent = prev.trim();
+  document.getElementById('outp').value = prev.trim();
   document.getElementById('dlkey').style.display = ak === 'separate' ? 'inline-flex' : 'none';
 }
 
